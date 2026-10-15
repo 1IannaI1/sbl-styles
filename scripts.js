@@ -2070,8 +2070,6 @@ function resetPdFilters() {
   document.getElementById('pdRegionFilter').value   = 'ALL';
   renderPdMarkers();
 }
-togglePdFullscreen
-
 document.getElementById('pdSeverityFilter').addEventListener('change', renderPdMarkers);
 document.getElementById('pdRegionFilter').addEventListener('change', renderPdMarkers);
 
@@ -2129,3 +2127,18 @@ document.getElementById('pdRegionFilter').addEventListener('change', renderPdMar
                 dropdown.dispatchEvent(new Event('change'));
             }, 100);
         });
+function togglePdFullscreen() {
+  var wrap = document.querySelector('#pdHeatmapView .heatmap-full');
+  if (!wrap) return;
+  wrap.classList.toggle('pd-fullscreen-active');
+  setTimeout(function() { if (pdMap) pdMap.invalidateSize(); }, 250);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  loadData();
+  setTimeout(function() {
+    var dropdown = document.getElementById('viewSelector');
+    dropdown.value = 'live';
+    dropdown.dispatchEvent(new Event('change'));
+  }, 100);
+});
