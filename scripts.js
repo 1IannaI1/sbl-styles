@@ -2133,12 +2133,3 @@ function togglePdFullscreen() {
   wrap.classList.toggle('pd-fullscreen-active');
   setTimeout(function() { if (pdMap) pdMap.invalidateSize(); }, 250);
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-  loadData();
-  setTimeout(function() {
-    var dropdown = document.getElementById('viewSelector');
-    dropdown.value = 'live';
-    dropdown.dispatchEvent(new Event('change'));
-  }, 100);
-});
