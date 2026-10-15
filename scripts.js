@@ -2057,6 +2057,7 @@ function renderPdMarkers() {
 
   const badge = document.getElementById('pdPointsBadge');
   if (badge) badge.textContent = filtered.length + ' account' + (filtered.length === 1 ? '' : 's');
+    refreshPdSummaries();   // ← ADD THIS LINE HERE      
 
   if (bounds.length && pdMap) {
     try {
@@ -2132,4 +2133,311 @@ function togglePdFullscreen() {
   if (!wrap) return;
   wrap.classList.toggle('pd-fullscreen-active');
   setTimeout(function() { if (pdMap) pdMap.invalidateSize(); }, 250);
+}
+// ============================================================
+// PD LOCATION NORMALIZATION + SUMMARY
+// ============================================================
+
+const BRGY_SYNONYMS = {
+  'commonewalth': 'commonwealth',
+  'pasong putik proper': 'pasong putik',
+  'pasonh putik': 'pasong putik',
+  'batasaan': 'batasan hills',
+  'batasaan hills': 'batasan hills',
+  'holly spirit': 'holy spirit',
+  'loma degato': 'loma de gato',
+  'lomq degato': 'loma de gato',
+  'lomq degato marilao': 'loma de gato',
+  'san roaue': 'san roque',
+  'calcanto': 'calicanto',
+  'gaya -gaya': 'gaya gaya',
+  'bagong buha2': 'bagong buhay 2',
+  'bagong buhay i': 'bagong buhay 1',
+  'poblacion 7 taal': 'poblacion 7',
+  'brgy 176': 'barangay 176',
+  'brgy 177': 'barangay 177',
+  'brgy 178': 'barangay 178',
+  'brgy 179': 'barangay 179',
+  'brgy 185': 'barangay 185',
+  'brgy 3': 'barangay 3',
+  'brgy 5': 'barangay 5',
+  'brgy 22': 'barangay 22',
+  'brgy 167': 'barangay 167',
+  'brgy 168': 'barangay 168',
+  'brgy 22 batangas': 'barangay 22',
+  'brgy395': 'barangay 395',
+  'brgy 395': 'barangay 395',
+  'brgy 848': 'barangay 848',
+  'brgy 641': 'barangay 641',
+  'brgy 306': 'barangay 306',
+  'brgy151': 'barangay 151',
+  '176 db': 'barangay 176',
+  '176 d': 'barangay 176',
+  '167 liano': 'barangay 167',
+  '168 deparo': 'barangay 168',
+  '157 east bagong barrio': 'barangay 157',
+  'san isidro cuenca': 'san isidro',
+  'muzon east': 'muzon east',
+  'bubuyan': 'bubuyan',
+  'cuta': 'cuta',
+  'gaya-gaya': 'gaya gaya',
+  'tungkong mangga': 'tungkong mangga',
+};
+
+const CITY_SYNONYMS = {
+  'ssn jose': 'san jose del monte',
+  'san jose delmonte': 'san jose del monte',
+  'san jose del monte bulacan': 'san jose del monte',
+  'sjdm bulacan': 'san jose del monte',
+  'city of san jose delmonte': 'san jose del monte',
+  'quezon': 'quezon city',
+  'sta rosa': 'santa rosa',
+  'santa rosa city': 'santa rosa',
+  'sta rosa city': 'santa rosa',
+  'binan city': 'binan',
+  'biñan city': 'binan',
+  'montalban': 'rodriguez',
+  'montalban rizal': 'rodriguez',
+  'rodriguez rizal': 'rodriguez',
+  'marilao bulacan': 'marilao',
+  'marilao': 'marilao',
+  'carmona cavite': 'carmona',
+  'carmona city': 'carmona',
+  'santa rosa laguna': 'santa rosa',
+  'los banos laguna': 'los banos',
+  'losbanos laguna': 'los banos',
+  'dasmarinas cavite': 'dasmarinas',
+  'dasmarin̈as': 'dasmarinas',
+  'dasmarinas': 'dasmarinas',
+  'las pinas city': 'las pinas',
+  'laspiñas city': 'las pinas',
+  'laspiñas': 'las pinas',
+  'san pedro city': 'san pedro',
+  'bacoor city': 'bacoor',
+  'imus cavite': 'imus',
+  'bacoor cavite': 'bacoor',
+  'general mariano alvarez': 'general mariano alvarez',
+  'gen mariano alvarez': 'general mariano alvarez',
+  'santa maria bulacan': 'santa maria',
+  'sta maria bulacan': 'santa maria',
+  'sta maria': 'santa maria',
+  'trece martires city': 'trece martires',
+  'trece martires cavite': 'trece martires',
+  'san jose del monte': 'san jose del monte',
+  'city of san jose del monte': 'san jose del monte',
+  'biñan': 'binan',
+  'batangas city': 'batangas city',
+  'san pablo': 'san pablo',
+  'santo tomas': 'santo tomas',
+  'san pascual': 'san pascual',
+  'alaminos': 'alaminos',
+  'tanauan city': 'tanauan',
+  'norzagaray': 'norzagaray',
+  'silang cavite': 'silang',
+  'silang': 'silang',
+  'antipolo rizal': 'antipolo',
+  'antipolo': 'antipolo',
+  'malvar': 'malvar',
+  'cabuyao city': 'cabuyao',
+  'cabuyao': 'cabuyao',
+  'san mateo rizal': 'san mateo',
+  'san mateo': 'san mateo',
+  'marikina city': 'marikina',
+  'marikina': 'marikina',
+  'taguig': 'taguig',
+  'muntinlupa city': 'muntinlupa',
+  'muntinlupa': 'muntinlupa',
+  'parañaque': 'paranaque',
+  'paranaque': 'paranaque',
+  'valenzuela city': 'valenzuela',
+  'valenzuela': 'valenzuela',
+  'manila': 'manila',
+  'pasay city': 'pasay',
+  'pasay': 'pasay',
+  'pasig city': 'pasig',
+  'pasig': 'pasig',
+  'mandaluyong': 'mandaluyong',
+  'makati city': 'makati',
+  'makati': 'makati',
+  'caloocan city': 'caloocan',
+  'caloocan north': 'caloocan',
+  'caloocan': 'caloocan',
+  'malabon city': 'malabon',
+  'malabon': 'malabon',
+  'navotas': 'navotas',
+  'pateros': 'pateros',
+  'san juan': 'san juan',
+  'sta mesa': 'santa mesa',
+  'santa mesa': 'santa mesa',
+  'sampaloc': 'sampaloc',
+  'quiapo': 'quiapo',
+  'tondo': 'tondo',
+  'recto': 'sampaloc',
+  'cainta rizal': 'cainta',
+  'angono rizal': 'angono',
+  'binangonan': 'binangonan',
+  'tanza cavite': 'tanza',
+  'tanza': 'tanza',
+  'kawit': 'kawit',
+  'naic cavite': 'naic',
+  'naic': 'naic',
+  'rosario': 'rosario',
+  'amadeo cavite': 'amadeo',
+  'amadeo': 'amadeo',
+  'alfonso': 'alfonso',
+  'mendez': 'mendez',
+  'indang': 'indang',
+  'noveleta': 'noveleta',
+  'tagaytay city': 'tagaytay',
+  'porac': 'porac',
+  'arayat': 'arayat',
+  'angat': 'angat',
+  'pandi': 'pandi',
+  'calauan': 'calauan',
+  'lipa': 'lipa',
+  'cuenca': 'cuenca',
+  'taal batangas': 'taal',
+  'taal': 'taal',
+  'san rafael': 'san rafael',
+  'mindanao': 'zamboanga del sur',
+  'zamboanga del sur': 'zamboanga del sur',
+};
+
+function normalizeBrgyName(s) {
+  if (!s) return '';
+  let b = String(s).toLowerCase();
+  b = b.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  b = b.replace(/[^a-z0-9\s]/g, ' ');
+  b = b.replace(/\s+/g, ' ').trim();
+  b = b.replace(/^(brgy|barangay|bgy)\s+/, 'barangay ');
+  b = b.replace(/^pob\s*(\d+)/, 'poblacion $1');
+  b = b.replace(/^poblacion\s*(\d+)/, 'poblacion $1');
+  b = b.replace(/\bsto\b/g, 'santo');
+  b = b.replace(/\bsta\b/g, 'santa');
+  return BRGY_SYNONYMS[b] || b;
+}
+
+function normalizeCityName(s) {
+  if (!s) return '';
+  let c = String(s).toLowerCase();
+  c = c.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  c = c.replace(/[^a-z0-9\s]/g, ' ');
+  c = c.replace(/\s+/g, ' ').trim();
+  c = c.replace(/^city of\s+/, '');
+  c = c.replace(/\s+city$/, '');
+  c = c.replace(/\bsto\b/g, 'santo');
+  c = c.replace(/\bsta\b/g, 'santa');
+  c = c.replace(/\bgen\b/g, 'general');
+  c = c.replace(/sanjose/g, 'san jose');
+  c = c.replace(/\s+/g, ' ').trim();
+  return CITY_SYNONYMS[c] || c;
+}
+
+let PD_SUMMARY = { byLocation: [], byBao: [] };
+
+function buildPdSummaries() {
+  if (!Array.isArray(PD_DATA) || PD_DATA.length === 0) {
+    PD_SUMMARY = { byLocation: [], byBao: [] };
+    return;
+  }
+
+  // Phase 1: normalize
+  const rows = PD_DATA.map(r => {
+    const b = normalizeBrgyName(pickPd(r, 'Barangay', 'brgy', 'barangay') || '');
+    const c = normalizeCityName(pickPd(r, 'City', 'Municipality', 'city') || '');
+    const sev = pdSeverityOf(r);
+    const agent = String(pickPd(r, 'agent_name', 'Agent Name') || '').trim();
+    const region = String(pickPd(r, 'Region') || '').trim();
+    return { brgy: b, city: c, sev: sev.toLowerCase(), agent, region };
+  }).filter(r => r.brgy && r.city);
+
+  // Phase 2: for each brgy, which cities does it appear in?
+  const brgyCities = {};
+  rows.forEach(r => {
+    if (!brgyCities[r.brgy]) brgyCities[r.brgy] = new Set();
+    brgyCities[r.brgy].add(r.city);
+  });
+
+  // Phase 3: if a brgy appears in only one city, force that city (Option B safety)
+  rows.forEach(r => {
+    const set = brgyCities[r.brgy];
+    if (set && set.size === 1) r.city = Array.from(set)[0];
+  });
+
+  // Aggregate by location
+  const locMap = {};
+  rows.forEach(r => {
+    const key = r.city + '|' + r.brgy;
+    if (!locMap[key]) locMap[key] = { city: r.city, brgy: r.brgy, severe: 0, moderate: 0, good: 0, total: 0 };
+    const o = locMap[key];
+    o.total++;
+    if (r.sev.includes('severe'))   o.severe++;
+    else if (r.sev.includes('moderate')) o.moderate++;
+    else if (r.sev.includes('good'))     o.good++;
+  });
+  const byLocation = Object.values(locMap).sort((a, b) => b.severe - a.severe || b.total - a.total);
+
+  // Aggregate by agent
+  const baoMap = {};
+  rows.forEach(r => {
+    if (!r.agent) return;
+    if (!baoMap[r.agent]) baoMap[r.agent] = { agent: r.agent, region: r.region, severe: 0, moderate: 0, good: 0, total: 0 };
+    const o = baoMap[r.agent];
+    o.total++;
+    if (r.sev.includes('severe'))   o.severe++;
+    else if (r.sev.includes('moderate')) o.moderate++;
+    else if (r.sev.includes('good'))     o.good++;
+  });
+  const byBao = Object.values(baoMap).sort((a, b) => b.severe - a.severe || b.total - a.total);
+
+  PD_SUMMARY = { byLocation, byBao };
+}
+
+function renderPdLocationTable() {
+  const tbody = document.getElementById('pdLocationTableBody');
+  if (!tbody) return;
+  const q = (document.getElementById('pdLocationSearch') || {}).value || '';
+  const query = q.trim().toLowerCase();
+  const rows = PD_SUMMARY.byLocation.filter(r => !query || (r.city + ' ' + r.brgy).includes(query));
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${r.city}</td>
+      <td>${r.brgy}</td>
+      <td style="color:#FF3B3B;font-weight:700;">${r.severe || ''}</td>
+      <td style="color:#FF9F5A;font-weight:700;">${r.moderate || ''}</td>
+      <td style="color:#34D399;font-weight:700;">${r.good || ''}</td>
+      <td style="font-weight:700;">${r.total}</td>
+    </tr>`).join('')
+    : '<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--text-muted);">No locations match.</td></tr>';
+  const badge = document.getElementById('pdLocationCount');
+  if (badge) badge.textContent = rows.length + ' location' + (rows.length === 1 ? '' : 's');
+}
+
+function renderPdBaoTable() {
+  const tbody = document.getElementById('pdBaoTableBody');
+  if (!tbody) return;
+  const rows = PD_SUMMARY.byBao;
+  tbody.innerHTML = rows.length ? rows.map(r => {
+    const pct = r.total ? Math.round(r.severe / r.total * 100) : 0;
+    const color = pct >= 60 ? '#FF3B3B' : pct >= 30 ? '#FF9F5A' : '#34D399';
+    return `
+    <tr>
+      <td>${r.agent}</td>
+      <td>${r.region}</td>
+      <td style="color:#FF3B3B;font-weight:700;">${r.severe || ''}</td>
+      <td style="color:#FF9F5A;font-weight:700;">${r.moderate || ''}</td>
+      <td style="color:#34D399;font-weight:700;">${r.good || ''}</td>
+      <td style="font-weight:700;">${r.total}</td>
+      <td style="color:${color};font-weight:700;">${pct}%</td>
+    </tr>`;
+  }).join('')
+    : '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-muted);">No agents.</td></tr>';
+  const badge = document.getElementById('pdBaoCount');
+  if (badge) badge.textContent = rows.length + ' agents';
+}
+
+function refreshPdSummaries() {
+  buildPdSummaries();
+  renderPdLocationTable();
+  renderPdBaoTable();
 }
