@@ -1126,3 +1126,17 @@
         .pd-popup-severe   { color: #FF3B3B !important; font-weight: 800 !important; }
         .pd-popup-moderate { color: #FF9F5A !important; font-weight: 800 !important; }
         .pd-popup-good     { color: #34D399 !important; font-weight: 800 !important; }
+            /* Fullscreen PD Heatmap */
+            #pdHeatmapView .heatmap-full:fullscreen,
+            #pdHeatmapView .heatmap-full:-webkit-full-screen {
+              width: 100vw;
+              height: 100vh;
+              border-radius: 0;
+              background: var(--bg-main);
+            }
+            #pdHeatmapView .heatmap-full:fullscreen #pdHeatmapContainer,
+            #pdHeatmapView .heatmap-full:-webkit-full-screen #pdHeatmapContainer {
+              height: 100% !important;
+              min-height: 0 !important;
+              flex: 1;
+            }
