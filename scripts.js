@@ -2070,6 +2070,21 @@ function resetPdFilters() {
   document.getElementById('pdRegionFilter').value   = 'ALL';
   renderPdMarkers();
 }
+function togglePdFullscreen() {
+  const el = document.querySelector('#pdHeatmapView .heatmap-full');
+  if (!el) return;
+
+  if (!document.fullscreenElement) {
+    (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen).call(el);
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen).call(document);
+  }
+}
+
+// Redraw map when entering/leaving fullscreen (Leaflet needs a size update)
+document.addEventListener('fullscreenchange', () => {
+  if (pdMap) setTimeout(() => pdMap.invalidateSize(), 200);
+});
 
 document.getElementById('pdSeverityFilter').addEventListener('change', renderPdMarkers);
 document.getElementById('pdRegionFilter').addEventListener('change', renderPdMarkers);
