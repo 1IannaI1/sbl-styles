@@ -1147,3 +1147,16 @@
 #pdHeatmapView .heatmap-full.pd-fullscreen-active .heatmap-legend {
   padding: 10px 22px 16px 22px !important;
 }
+/* PD Heatmap view: allow scroll with tables below */
+#pdHeatmapView {
+  height: auto !important;
+  display: block !important;
+  min-height: 0 !important;
+}
+#pdHeatmapView .heatmap-full {
+  height: 70vh !important;
+  min-height: 500px;
+  max-height: 800px;
+  flex: none !important;
+  margin-bottom: 22px;
+}
