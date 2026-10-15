@@ -2399,15 +2399,21 @@ function renderPdLocationTable() {
   const q = (document.getElementById('pdLocationSearch') || {}).value || '';
   const query = q.trim().toLowerCase();
   const rows = PD_SUMMARY.byLocation.filter(r => !query || (r.city + ' ' + r.brgy).includes(query));
-  tbody.innerHTML = rows.length ? rows.map(r => `
+  tbody.innerHTML = rows.length ? rows.map(r => {
+    const t = r.total || 1;
+    const sp = Math.round((r.severe   / t) * 100);
+    const mp = Math.round((r.moderate / t) * 100);
+    const gp = Math.round((r.good     / t) * 100);
+    return `
     <tr>
       <td>${r.city}</td>
       <td>${r.brgy}</td>
-      <td style="color:#FF3B3B;font-weight:700;">${r.severe || ''}</td>
-      <td style="color:#FF9F5A;font-weight:700;">${r.moderate || ''}</td>
-      <td style="color:#34D399;font-weight:700;">${r.good || ''}</td>
+      <td style="color:#FF3B3B;font-weight:700;">${r.severe   || 0} <span style="color:var(--text-muted);font-weight:400;">(${sp}%)</span></td>
+      <td style="color:#FF9F5A;font-weight:700;">${r.moderate || 0} <span style="color:var(--text-muted);font-weight:400;">(${mp}%)</span></td>
+      <td style="color:#34D399;font-weight:700;">${r.good     || 0} <span style="color:var(--text-muted);font-weight:400;">(${gp}%)</span></td>
       <td style="font-weight:700;">${r.total}</td>
-    </tr>`).join('')
+    </tr>`;
+  }).join('')
     : '<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--text-muted);">No locations match.</td></tr>';
   const badge = document.getElementById('pdLocationCount');
   if (badge) badge.textContent = rows.length + ' location' + (rows.length === 1 ? '' : 's');
@@ -2440,4 +2446,133 @@ function refreshPdSummaries() {
   buildPdSummaries();
   renderPdLocationTable();
   renderPdBaoTable();
+  renderPdMonthlyTable();
+}
+// ============================================================
+// BAO PD MONTHLY TREND
+// ============================================================
+
+function pdMonthKey(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function pdMonthLabel(key) {
+  const p = key.split('-');
+  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1] - 1] + ' ' + p[0].slice(2);
+}
+
+function pdSevereRate(cell) {
+  if (!cell || !cell.total) return 0;
+  return cell.severe / cell.total * 100;
+}
+
+function buildPdMonthlyByBao() {
+  if (!Array.isArray(PD_DATA) || PD_DATA.length === 0) return { months: [], rows: [] };
+
+  const cells = {};   // "agent|YYYY-MM" -> {severe, moderate, good, total}
+  const monthSet = new Set();
+  const agentSet = new Set();
+
+  PD_DATA.forEach(r => {
+    const agent = String(pickPd(r, 'agent_name', 'Agent Name') || '').trim();
+    if (!agent) return;
+    const dateStr = pickPd(r, 'date_disbursed', 'Date Disbursed');
+    const d = parseDate(dateStr);
+    if (!d) return;
+    const k = pdMonthKey(d);
+    monthSet.add(k);
+    agentSet.add(agent);
+    const key = agent + '|' + k;
+    if (!cells[key]) cells[key] = { severe: 0, moderate: 0, good: 0, total: 0 };
+    const c = cells[key];
+    c.total++;
+    const sev = pdSeverityOf(r).toLowerCase();
+    if (sev.includes('severe'))       c.severe++;
+    else if (sev.includes('moderate')) c.moderate++;
+    else if (sev.includes('good'))     c.good++;
+  });
+
+  const months = Array.from(monthSet).sort();
+
+  const rows = Array.from(agentSet).map(agent => {
+    const monthCells = months.map(m => cells[agent + '|' + m] || null);
+    const valid = monthCells.filter(c => c !== null);
+
+    // Trend: compare average severe-rate in first half vs second half of active months
+    let trend = '—';
+    let trendColor = 'var(--text-muted)';
+    if (valid.length >= 2) {
+      const mid = Math.floor(valid.length / 2);
+      const firstRate  = avgSevRate(valid.slice(0, mid));
+      const secondRate = avgSevRate(valid.slice(mid));
+      const diff = secondRate - firstRate;
+      if (diff <= -10) { trend = '↓ Improving'; trendColor = '#34D399'; }
+      else if (diff >= 10) { trend = '↑ Worsening'; trendColor = '#FF3B3B'; }
+      else { trend = '→ Stable'; trendColor = 'var(--text-muted)'; }
+    }
+
+    return { agent, monthCells, months, trend, trendColor };
+  });
+
+  // Sort: worsening first, then by most recent month's severe rate
+  rows.sort((a, b) => {
+    const wA = a.trend.startsWith('↑') ? 0 : a.trend.startsWith('→') ? 1 : 2;
+    const wB = b.trend.startsWith('↑') ? 0 : b.trend.startsWith('→') ? 1 : 2;
+    if (wA !== wB) return wA - wB;
+    const la = a.monthCells[a.monthCells.length - 1];
+    const lb = b.monthCells[b.monthCells.length - 1];
+    return pdSevereRate(lb) - pdSevereRate(la);
+  });
+
+  return { months, rows };
+}
+
+function avgSevRate(cells) {
+  const totalSev = cells.reduce((s, c) => s + c.severe, 0);
+  const totalAll = cells.reduce((s, c) => s + c.total,  0);
+  return totalAll ? (totalSev / totalAll * 100) : 0;
+}
+
+function renderPdMonthlyTable() {
+  const table = document.getElementById('pdMonthlyTable');
+  if (!table) return;
+
+  const { months, rows } = buildPdMonthlyByBao();
+
+  // Build dynamic header (with month columns)
+  const thead = table.querySelector('thead');
+  thead.innerHTML = `
+    <tr>
+      <th style="position:sticky;left:0;background:#0E1826;z-index:3;text-align:left;">BAO / Agent</th>
+      ${months.map(m => `<th style="text-align:center;">${pdMonthLabel(m)}</th>`).join('')}
+      <th style="text-align:center;">Trend</th>
+    </tr>`;
+
+  const tbody = document.getElementById('pdMonthlyTableBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="99" style="text-align:center;padding:18px;color:var(--text-muted);">No data.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(r => {
+      const cells = r.monthCells.map(c => {
+        if (!c) return `<td style="text-align:center;color:var(--text-muted);opacity:0.4;">—</td>`;
+        const rate = c.total ? Math.round(c.severe / c.total * 100) : 0;
+        const bg = rate >= 60 ? 'rgba(255,59,59,0.20)'
+                 : rate >= 30 ? 'rgba(255,159,90,0.20)'
+                 :              'rgba(52,211,153,0.18)';
+        const fg = rate >= 60 ? '#FFB3B3'
+                 : rate >= 30 ? '#FFC48A'
+                 :              '#6EE7B7';
+        return `<td style="text-align:center;background:${bg};color:${fg};font-weight:700;">${c.severe} <span style="font-weight:400;opacity:0.75;">(${rate}%)</span></td>`;
+      }).join('');
+      return `
+        <tr>
+          <td style="position:sticky;left:0;background:#0E1826;z-index:2;font-weight:700;white-space:nowrap;">${r.agent}</td>
+          ${cells}
+          <td style="text-align:center;color:${r.trendColor};font-weight:700;white-space:nowrap;">${r.trend}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  const badge = document.getElementById('pdMonthlyCount');
+  if (badge) badge.textContent = rows.length + ' agent' + (rows.length === 1 ? '' : 's');
 }
