@@ -2003,8 +2003,12 @@ function renderPdMarkers() {
   pdMarkers.forEach(m => pdMap.removeLayer(m));
   pdMarkers = [];
 
-  const sevFilter    = document.getElementById('pdSeverityFilter').value;
+    const sevFilter    = document.getElementById('pdSeverityFilter').value;
   const regionFilter = document.getElementById('pdRegionFilter').value;
+  const searchEl     = document.getElementById('pdMapSearch');
+  const rawQuery     = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  // Split by spaces so "quezon commonwealth" matches both
+  const queryTerms   = rawQuery ? rawQuery.split(/\s+/).filter(Boolean) : [];
 
   const filtered = PD_DATA.filter(r => {
     const sev = pdSeverityOf(r);
@@ -2014,6 +2018,15 @@ function renderPdMarkers() {
       if (!sev.toLowerCase().includes(sevFilter.toLowerCase())) return false;
     }
     if (regionFilter !== 'ALL' && reg !== regionFilter) return false;
+
+    if (queryTerms.length) {
+      // Normalize so typos still match: "Commonweath / Quezon city" is searchable as "commonwealth quezon"
+      const b = normalizeBrgyName(pickPd(r, 'Barangay', 'brgy', 'barangay') || '');
+      const c = normalizeCityName(pickPd(r, 'City', 'Municipality', 'city') || '');
+      const haystack = (b + ' ' + c).toLowerCase();
+      if (!queryTerms.every(t => haystack.includes(t))) return false;
+    }
+
     return true;
   });
 
@@ -2069,6 +2082,8 @@ function renderPdMarkers() {
 function resetPdFilters() {
   document.getElementById('pdSeverityFilter').value = 'ALL';
   document.getElementById('pdRegionFilter').value   = 'ALL';
+  const searchEl = document.getElementById('pdMapSearch');
+  if (searchEl) searchEl.value = '';
   renderPdMarkers();
 }
 document.getElementById('pdSeverityFilter').addEventListener('change', renderPdMarkers);
